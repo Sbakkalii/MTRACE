@@ -1,6 +1,6 @@
-# MIRAGE — Multilingual RAG over Temporally Diverse Text Corpora
+# MTRACE — Multilingual RAG over Temporally Diverse Text Corpora
 
-**MIRAGE** = **M**ultilingual **I**nformation **R**etrieval-**A**ugmented **G**eneration with
+**MTRACE** = **M**ultilingual **T**emporal **R**etrieval-**A**ugmented **G**eneration with
 **E**vidence grounding.
 
 Code, results and manuscript source for an empirical study of multilingual
