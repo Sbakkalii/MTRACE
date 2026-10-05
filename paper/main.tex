@@ -152,14 +152,14 @@ We adopt the standard MIRACL train/test splits. For qualitative analysis and RAG
 \subsection{Evaluation Metrics}
 \label{subsec:metrics}
 
-We score retrieval with \textbf{Sim@1} and \textbf{Sim@5}, the mean cosine similarity between a query embedding and its top-1/top-5 re-scored candidates, and the \textbf{confidence drop} (the top-1/top-2 gap); embedding selection additionally uses the self-retrieval variant of Sim@5, in which each chunk queries the index including itself. NER is scored with \textbf{Syntactic Relevance}, the fraction of extracted entities that form complete linguistic units. Generation is scored with the RAGAS framework \citep{es2024ragas}: \textbf{faithfulness}, the fraction of an answer's claims supported by the retrieved context, and \textbf{answer relevancy}, the cosine agreement between the answer and the query via synthetic questions. Formal definitions, the self-retrieval constant, and the clustering diagnostics (Silhouette, Davies--Bouldin, Calinski--Harabasz) are given in \cref{sec:app_metrics}; in the reported runs, claim verification uses \texttt{deepseek-v4-flash} and relevancy embeddings use \texttt{qwen3-embedding:4b}, hosted stand-ins for the RAGAS defaults.
+We score retrieval with \textbf{Sim@1} and \textbf{Sim@5}, the mean cosine similarity between a query embedding and its top-1/top-5 re-scored candidates, and the \textbf{confidence drop} (the top-1/top-2 gap); embedding selection additionally uses the self-retrieval variant of Sim@5, in which each chunk queries the index including itself: the self-match adds the same constant to every model, so cross-model comparisons in \cref{tab:embedding-comprehensive} remain valid although the absolute values are inflated relative to a leave-one-out protocol, and these scores are not comparable to the query-based scores of \cref{tab:benchmark_retrieval_fusion_detail}. NER is scored with \textbf{Syntactic Relevance}, the fraction of extracted entities that form complete linguistic units. Generation is scored with the RAGAS framework \citep{es2024ragas}: \textbf{faithfulness}, the fraction of an answer's claims supported by the retrieved context, and \textbf{answer relevancy}, the cosine agreement between the answer and the query via synthetic questions. Formal definitions, the self-retrieval constant, and the clustering diagnostics (Silhouette, Davies--Bouldin, Calinski--Harabasz) are given in \cref{sec:app_metrics}; in the reported runs, claim verification uses \texttt{deepseek-v4-flash} and relevancy embeddings use \texttt{qwen3-embedding:4b}, hosted stand-ins for the RAGAS defaults.
 
 \subsection{Ablation Component: Entity-Aware Retrieval Enrichment (NER)}
 \label{subsec:exp_ner}
 
 \subsubsection{Experimental Setup:} We evaluated four NER models on a balanced sub-corpus of 50,000 English and French MIRACL texts, judging three dimensions for downstream retrieval augmentation: \textit{processing efficiency}, \textit{entity extraction volume}, and \textit{syntactic relevance}---the ability to extract entities that form coherent linguistic units without fragmentation or boundary errors. Syntactic coherence is a prerequisite for effective query expansion: fragmented entities introduce noise that degrades downstream retrieval.
 
-\subsubsection{Comparative Analysis:} \cref{fig:ner-comparison} shows clear trade-offs. \texttt{bert-base-multilingual-cased} yields the highest raw entity count (\cref{fig:ner-entities}) but produces frequent fragmentation (\eg, `\#\#iste allemand Walter Porzig`) and inconsistent labels (`LABEL\_0`, `LABEL\_1`; \cref{tab:ner-qualitative-comparison}), noise that would degrade downstream entity-aware retrieval. The historically-trained \texttt{bert-base-historic-multilingual-cased} underperformed---neither improved accuracy nor better handling of archaic spellings, while incurring computational overhead---suggesting that domain-specific pretraining is insufficient without explicit optimization for the NER task.
+\subsubsection{Comparative Analysis:} \cref{tab:ner-qualitative-comparison} shows clear trade-offs (per-model counts, timings and rates in \cref{sec:app_ner}). \texttt{bert-base-multilingual-cased} yields the highest raw entity count but produces frequent fragmentation (\eg, `\#\#iste allemand Walter Porzig`) and inconsistent labels (`LABEL\_0`, `LABEL\_1`; \cref{tab:ner-qualitative-comparison}), noise that would degrade downstream entity-aware retrieval. The historically-trained \texttt{bert-base-historic-multilingual-cased} underperformed---neither improved accuracy nor better handling of archaic spellings, while incurring computational overhead---suggesting that domain-specific pretraining is insufficient without explicit optimization for the NER task.
 
 \begin{table}[t]
     \centering
@@ -182,7 +182,7 @@ We score retrieval with \textbf{Sim@1} and \textbf{Sim@5}, the mean cosine simil
     }%
 \end{table}
 
-\subsubsection{Model Selection Justification:} We select \texttt{wikineural-multilingual-ner} as the optimal balance across our criteria: high syntactic relevance (85\%, \cref{fig:ner-syntax}) at competitive speed (\cref{fig:ner-speed}), and clean, well-typed outputs (`('Walter Porzig', 'PER')`) directly usable for entity-based query expansion without post-processing.
+\subsubsection{Model Selection Justification:} We select \texttt{wikineural-multilingual-ner} as the optimal balance across our criteria: high syntactic relevance (85\% of extracted entities) at competitive speed, and clean, well-typed outputs (`('Walter Porzig', 'PER')`) directly usable for entity-based query expansion without post-processing.
 
 \subsection{Ablation Component: Embedding Model Selection and Efficiency Trade-offs}
 \label{subsec:exp_embedding}
@@ -296,7 +296,25 @@ MTRACE's hybrid retrieval stage (query expansion followed by multi-query fusion)
     }%
 \end{table*}
 
-The Time column reports total re-ranking time per model over the 50 queries under both conditions (model load excluded): 5.0\,s for the selected retriever, rising to 50.4\,s for \texttt{Linq-Embed-Mistral}; fusion issues one index search per reformulation. Per language (25 FR, 25 EN), the selected retriever's dense Sim@5 is 0.870 (FR) and 0.859 (EN), and fusion lowers it in both (0.864 and 0.837); per-language means for all four models are released in \texttt{r2\_results.csv}. The overhead is modest, with no compensating similarity gain. Comparing fusion only against single-query dense isolates query expansion (the deployed pipeline fuses multi-query \emph{dense} lists; the appendix additionally evaluates fusing a \emph{sparse} list); under the same protocol, BM25 trails single-query dense by \(0.008\) to \(0.011\) Sim@1 and fusing it into the dense list yields no gain (the hybrid matches dense to within \(0.002\), no interval excluding zero); expansion lowers re-scored similarity for dense, sparse and fused retrieval alike, so the negative result above is a property of the protocol, not of dense retrieval. Full six-condition results and intervals are in \cref{tab:app_sparse_conditions}; alternative fusion operators (\eg, CombSUM) and gold-label recall remain future work.
+The Time column reports total re-ranking time per model over the 50 queries under both conditions (model load excluded): 5.0\,s for the selected retriever, rising to 50.4\,s for \texttt{Linq-Embed-Mistral}; fusion issues one index search per reformulation. Per language (25 FR, 25 EN), the selected retriever's dense Sim@5 is 0.870 (FR) and 0.859 (EN), and fusion lowers it in both (0.864 and 0.837); per-language means for all four models are released in \texttt{r2\_results.csv}. The overhead is modest, with no compensating similarity gain. Comparing fusion only against single-query dense isolates query expansion (the deployed pipeline fuses multi-query \emph{dense} lists; the appendix additionally evaluates fusing a \emph{sparse} list); under the same protocol, BM25 trails single-query dense by \(0.008\) to \(0.011\) Sim@1 and fusing it into the dense list yields no gain (the hybrid matches dense to within \(0.002\), no interval excluding zero); expansion lowers re-scored similarity for dense, sparse and fused retrieval alike, so the negative result above is a property of the protocol, not of dense retrieval. Headline contrasts are in \cref{tab:baseline_contrasts}; full six-condition results, Sim@5 contrasts and the precision control in \cref{sec:app_sparse}. alternative fusion operators (\eg, CombSUM) and gold-label recall remain future work.
+
+\begin{table}[t]
+    \centering
+    \scriptsize
+    \setlength{\tabcolsep}{3.2pt}
+    \caption{Paired per-query differences in cosine Sim@1 with bootstrap 95\% CIs (10\,000 resamples, seed 42; interval bounds rounded to three decimals): the sparse baseline (BM25) and the sparse+dense fusion (Hybrid) against single-query dense retrieval, all measured in one session under one scorer precision (\cref{sec:app_sparse}); \textsuperscript{*} marks CIs excluding zero. Model abbreviations as in \cref{tab:app_sparse_conditions}.}
+    \label{tab:baseline_contrasts}
+    \begin{tabular}{|l|cc|}
+        \hline
+        Model & BM25 $-$ Dense & Hybrid $-$ Dense \\
+        \hline
+        \texttt{e5-large} & $-0.0076^{*}$\ $[-.011,-.004]$ & $-0.0001$\ $[-.000,+.000]$ \\
+        \texttt{e5-mistral} & $-0.0078$\ $[-.030,+.014]$ & $-0.0001$\ $[-.013,+.012]$ \\
+        \texttt{SFR} & $-0.0109^{*}$\ $[-.018,-.005]$ & $+0.0001$\ $[-.002,+.002]$ \\
+        \texttt{Linq} & $-0.0112^{*}$\ $[-.020,-.003]$ & $+0.0019$\ $[-.002,+.006]$ \\
+        \hline
+    \end{tabular}
+\end{table}
 
 \subsubsection{QA Quality Assessment and Boundary Conditions}
 Under RAGAS (\cref{tab:ragas_results_detailed}), faithfulness averages 0.354 (sd 0.343) and answer relevancy 0.370 (sd 0.430) over the 50 queries; by category, entity-focused queries reach 0.428/0.545, event-oriented 0.406/0.381, and the intentionally unanswerable 0.100/0.000. Abstentions receive zero relevancy by construction and pull the aggregates down: the system refuses 28 of the 50 questions---all 10 unanswerable ones and 18 of the 40 answerable ones. On well-supported queries it scores high: ``{\ttfamily Qui était Victor Hugo ?}'' and ``{\ttfamily Who was Alan Turing?}'' reach perfect faithfulness (1.000) with relevancy 1.000 and 0.862, and the American Civil War query scores 0.833/0.826 (\cref{tab:ragas_results_detailed}). 
